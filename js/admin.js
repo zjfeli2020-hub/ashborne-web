@@ -10,6 +10,7 @@ function admTab(id, btn){
   if(id==='adm-noticias') renderAdminNews();
   if(id==='adm-juegos')   renderAdminGames();
   if(id==='adm-usuarios') renderAdminUsers();
+  if(id==='adm-equipo')   renderAdminTeam();
 }
 
 /* ═══════════════════════════════════════
@@ -29,13 +30,14 @@ async function loadPublicStats(){
   [['pub-cs-users',u.count],['pub-cs-threads',t.count],['pub-cs-posts',p.count],['pub-cs-news',n.count]]
     .forEach(([id,v])=>{const e=document.getElementById(id);if(e)e.textContent=fmtNum(v);});
 
-  // Stats de Roblox: suma de todos los juegos de la DB
+  // Stats de Roblox: solo juegos publicados (status='live')
   try{
-    const {data:allGames} = await sb.from('games').select('visits,playing,favorites');
+    const {data:allGames} = await sb.from('games').select('visits,playing,favorites,status');
     if(allGames&&allGames.length){
-      const totalVisits   = allGames.reduce((s,g)=>s+(Number(g.visits)||0),   0);
-      const totalPlaying  = allGames.reduce((s,g)=>s+(Number(g.playing)||0),  0);
-      const totalFavs     = allGames.reduce((s,g)=>s+(Number(g.favorites)||0),0);
+      const pubGames = allGames.filter(g=>g.status==='live');
+      const totalVisits   = pubGames.reduce((s,g)=>s+(Number(g.visits)||0),   0);
+      const totalPlaying  = pubGames.reduce((s,g)=>s+(Number(g.playing)||0),  0);
+      const totalFavs     = pubGames.reduce((s,g)=>s+(Number(g.favorites)||0),0);
       const ev=document.getElementById('pub-rs-visits');    if(ev) ev.textContent=fmtNum(totalVisits);
       const ep=document.getElementById('pub-rs-playing');   if(ep) ep.textContent=fmtNum(totalPlaying);
       const ef=document.getElementById('pub-rs-favorites'); if(ef) ef.textContent=fmtNum(totalFavs);
@@ -203,7 +205,8 @@ async function refreshRobloxStats(){
 
   // 7. Refrescar toda la UI con los nuevos datos
   await loadPublicStats();
-  await loadGameStats(CFG.GAME_PLACE_ID);
+  // Usar el place_id del juego actualmente visible en el carrusel
+  await loadGameStats(carGames[carIndex]?.place_id || CFG.GAME_PLACE_ID);
   // Refrescar las tarjetas de juegos si la página está activa
   if(curPage==='games') await renderGames();
 }
@@ -467,4 +470,93 @@ async function nukeNews(){
   await sb.from('news').delete().neq('id',0);
   renderAllNews(); renderSBNews();
   toast('Noticias eliminadas.');
+}
+
+/* ═══════════════════════════════════════
+   ADMIN — EQUIPO
+   Requiere tabla en Supabase:
+   CREATE TABLE team_members (
+     id          bigint generated always as identity primary key,
+     user_id     uuid references users(id) on delete cascade,
+     username    text not null,
+     avatar_url  text,
+     role        text not null,
+     created_at  timestamptz default now()
+   );
+═══════════════════════════════════════ */
+async function renderAdminTeam(){
+  const el=document.getElementById('adm-team-list'); if(!el) return;
+  el.innerHTML='<div class="empty">Cargando...</div>';
+  const {data,error}=await sb.from('team_members').select('*').order('created_at',{ascending:true});
+  if(error){
+    el.innerHTML=`<div class="empty" style="color:var(--err)">Error: ${esc(error.message)}<br><small style="color:var(--w4)">Asegurate de haber creado la tabla <b>team_members</b> en Supabase.</small></div>`;
+    return;
+  }
+  if(!data||!data.length){el.innerHTML='<div class="empty">No hay miembros en el equipo todavía.</div>';return;}
+  el.innerHTML=`<div class="adm-table-wrap"><table class="adm-table">
+    <thead><tr><th>Avatar</th><th>Usuario</th><th>Rol</th><th>ID</th><th>Acción</th></tr></thead>
+    <tbody>${data.map(m=>`<tr>
+      <td><div style="width:36px;height:36px;border-radius:6px;overflow:hidden;background:var(--card2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--w3);flex-shrink:0">
+        ${m.avatar_url?`<img src="${esc(m.avatar_url)}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">`:(m.username||'?')[0].toUpperCase()}
+      </div></td>
+      <td style="font-weight:600;color:var(--w)">${esc(m.username)}</td>
+      <td style="color:var(--w2)">${esc(m.role)}</td>
+      <td style="font-size:11px;color:var(--w4);max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(m.user_id||'—')}</td>
+      <td><button class="btn btn-danger btn-xs" onclick="admRemoveTeamMember(${m.id})">Quitar</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+async function admAddTeamMember(){
+  if(!isAdmin()){toast('Sin permiso.','err');return;}
+  const uname=(document.getElementById('adm-tm-username').value||'').trim();
+  const role=(document.getElementById('adm-tm-role').value||'').trim();
+  if(!uname){toast('Ingresá el nombre de usuario.','err');return;}
+  if(!role){toast('Ingresá un rol para el miembro.','err');return;}
+
+  const btn=document.getElementById('adm-add-team-btn');
+  if(btn){btn.textContent='Buscando...';btn.disabled=true;}
+
+  // Buscar usuario en la tabla users por username
+  const {data:user,error:uErr}=await sb.from('users').select('id,username,avatar_url').eq('username',uname).maybeSingle();
+  if(uErr){
+    if(btn){btn.textContent='Agregar al equipo';btn.disabled=false;}
+    toast('Error al buscar usuario: '+uErr.message,'err');return;
+  }
+  if(!user){
+    if(btn){btn.textContent='Agregar al equipo';btn.disabled=false;}
+    toast('Usuario "'+uname+'" no encontrado. Verificá el nombre exacto.','err');return;
+  }
+
+  // Verificar que no esté ya en el equipo
+  const {data:exists}=await sb.from('team_members').select('id').eq('user_id',user.id).maybeSingle();
+  if(exists){
+    if(btn){btn.textContent='Agregar al equipo';btn.disabled=false;}
+    toast(user.username+' ya está en el equipo.','err');return;
+  }
+
+  const {error}=await sb.from('team_members').insert({
+    user_id:   user.id,
+    username:  user.username,
+    avatar_url:user.avatar_url||null,
+    role
+  });
+  if(btn){btn.textContent='Agregar al equipo';btn.disabled=false;}
+  if(error){toast('Error al agregar: '+error.message,'err');return;}
+
+  document.getElementById('adm-tm-username').value='';
+  document.getElementById('adm-tm-role').value='';
+  renderAdminTeam();
+  if(typeof renderTeam==='function') renderTeam();
+  toast(user.username+' agregado al equipo ✓');
+}
+
+async function admRemoveTeamMember(id){
+  if(!isAdmin()){toast('Sin permiso.','err');return;}
+  if(!confirm('¿Quitar a este miembro del equipo? Su cuenta de usuario no se eliminará.')) return;
+  const {error}=await sb.from('team_members').delete().eq('id',id);
+  if(error){toast('Error: '+error.message,'err');return;}
+  renderAdminTeam();
+  if(typeof renderTeam==='function') renderTeam();
+  toast('Miembro removido del equipo.');
 }

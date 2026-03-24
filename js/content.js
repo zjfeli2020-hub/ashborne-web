@@ -125,20 +125,21 @@ function carGoto(idx){
 ═══════════════════════════════════════ */
 async function loadGameStats(placeId){
   try{
-    const {data:allGames} = await sb.from('games').select('place_id,visits,playing,favorites');
+    const {data:allGames} = await sb.from('games').select('place_id,visits,playing,favorites,status');
     if(!allGames||!allGames.length) return;
 
-    // Totales globales: suma de todos los juegos
-    const totalVisits  = allGames.reduce((s,g)=>s+(Number(g.visits)||0),  0);
-    const totalPlaying = allGames.reduce((s,g)=>s+(Number(g.playing)||0), 0);
-    const totalFavs    = allGames.reduce((s,g)=>s+(Number(g.favorites)||0),0);
+    // Totales globales: solo juegos publicados (status='live')
+    const pubGames = allGames.filter(g=>g.status==='live');
+    const totalVisits  = pubGames.reduce((s,g)=>s+(Number(g.visits)||0),  0);
+    const totalPlaying = pubGames.reduce((s,g)=>s+(Number(g.playing)||0), 0);
+    const totalFavs    = pubGames.reduce((s,g)=>s+(Number(g.favorites)||0),0);
 
     // Globales (home stats bar + stats page)
     const ev=document.getElementById('st-visits');  if(ev) ev.textContent=fmtNum(totalVisits);
     const ea=document.getElementById('st-active');  if(ea) ea.textContent=fmtNum(totalPlaying);
     const ef=document.getElementById('st-likes');   if(ef) ef.textContent=fmtNum(totalFavs);
 
-    // Stats del juego activo en el carrusel (lookup por place_id)
+    // Stats del juego activo en el carrusel (lookup por place_id, busca en todos los juegos)
     const game = allGames.find(g=>String(g.place_id)===String(placeId));
     const gv = game && game.visits   != null ? fmtNum(game.visits)   : fmtNum(totalVisits);
     const ga = game && game.playing  != null ? fmtNum(game.playing)  : fmtNum(totalPlaying);
@@ -156,6 +157,40 @@ async function loadGameStats(placeId){
 ═══════════════════════════════════════ */
 async function renderTeam(){
   const grid=document.getElementById('team-grid'); if(!grid) return;
+
+  // Try loading from DB first; fall back to hardcoded TEAM if table missing or empty
+  let dbMembers=null;
+  try{
+    const {data,error}=await sb.from('team_members').select('*').order('created_at',{ascending:true});
+    if(!error&&data&&data.length) dbMembers=data;
+  }catch(e){}
+
+  if(dbMembers){
+    // Render from team_members table
+    const roles={};
+    for(const m of dbMembers){ if(!roles[m.role]) roles[m.role]=[]; roles[m.role].push(m); }
+    let html='';
+    for(const [role,members] of Object.entries(roles)){
+      html+=`<div class="team-role-section"><div class="team-role-hd">${role}</div>${members.map(m=>`
+        <div class="team-member-link">
+          <div class="tm-av" id="tm-av-db-${m.id}" style="display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--w3)">${(m.username||'?')[0].toUpperCase()}</div>
+          <div class="tm-info">
+            <div class="tm-name">${esc(m.username)}</div>
+            <div class="tm-user">@${esc(m.username)}</div>
+            <span class="tm-badge">${esc(role)}</span>
+          </div>
+        </div>`).join('')}</div>`;
+    }
+    grid.innerHTML=html;
+    for(const m of dbMembers){ if(!m.avatar_url) continue;
+      const av=document.getElementById('tm-av-db-'+m.id); if(!av) continue;
+      av.innerHTML=`<img src="${esc(m.avatar_url)}" alt="${esc(m.username)}" style="width:100%;height:100%;object-fit:cover;border-radius:5px" onerror="this.style.display='none'"/>`;
+      av.style.padding='0';
+    }
+    return;
+  }
+
+  // Fallback: render from hardcoded TEAM array in config.js
   const roles={};
   for(const m of TEAM){ if(!roles[m.role]) roles[m.role]=[]; roles[m.role].push(m); }
   let html='';

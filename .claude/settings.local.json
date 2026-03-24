@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -c \"function\\\\|const\\\\|async\" /c/Users/feli/Desktop/Web/ashborne/js/*.js)",
+      "Bash(wc -l /c/Users/feli/Desktop/Web/ashborne/js/*.js /c/Users/feli/Desktop/Web/ashborne/css/styles.css /c/Users/feli/Desktop/Web/ashborne/index.html)",
+      "Bash(git -C /c/Users/feli/Desktop/Web/ashborne log --oneline -10)",
+      "Bash(sed 's/id=\"\"\"\"pg-//g')",
+      "Bash(sed 's/\"\"\"\"//g')",
+      "Bash(git -C /c/Users/feli/Desktop/Web/ashborne config --list)",
+      "Bash(git -C /c/Users/feli/Desktop/Web/ashborne remote -v)"
+    ]
+  }
+}

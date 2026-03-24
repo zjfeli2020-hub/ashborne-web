@@ -451,6 +451,7 @@
         <button class="adm-tab on" onclick="admTab('adm-noticias',this)">📰 Noticias</button>
         <button class="adm-tab"    onclick="admTab('adm-juegos',this)">🎮 Juegos</button>
         <button class="adm-tab"    onclick="admTab('adm-usuarios',this)">👥 Usuarios</button>
+        <button class="adm-tab"    onclick="admTab('adm-equipo',this)">🧑‍💼 Equipo</button>
       </div>
 
       <!-- ── NOTICIAS ── -->
@@ -493,6 +494,26 @@
         </div>
         <div class="adm-section-title">Juegos publicados</div>
         <div id="adm-games-list"><div class="empty">Cargando...</div></div>
+      </div>
+
+      <!-- ── EQUIPO ── -->
+      <div id="adm-adm-equipo" class="adm-pane" style="display:none">
+        <div class="adm-section-title">Agregar miembro al equipo</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+          <div class="fg">
+            <label class="fl">Nombre de usuario del portal</label>
+            <input class="fi" id="adm-tm-username" placeholder="ej: Feli_ZJ"/>
+          </div>
+          <div class="fg">
+            <label class="fl">Rol</label>
+            <input class="fi" id="adm-tm-role" placeholder="ej: Developer, Moderador, Tester..."/>
+          </div>
+        </div>
+        <div style="margin-bottom:1.5rem">
+          <button class="btn btn-w btn-sm" id="adm-add-team-btn" onclick="admAddTeamMember()">Agregar al equipo</button>
+        </div>
+        <div class="adm-section-title">Miembros actuales del equipo</div>
+        <div id="adm-team-list"><div class="empty">Cargando...</div></div>
       </div>
 
       <!-- ── USUARIOS (solo Owner) ── -->
